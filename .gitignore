@@ -1,0 +1,38 @@
+@@ -1,27 +1,24 @@
+# --- IDE/Environment Folders ---
+.idea/             # JetBrains IDEs (PyCharm, IntelliJ, etc.)
+.vscode/           # VSCode settings (often project-specific)
+
+# --- Python Environment ---
+__pycache__/       # Compiled Python files
+*.pyc
+*.pyd
+
+# Python virtual environment folder (the .venv you created)
+.venv/             
+venv/              # Common alternative name
+env/              # Another common alternative name
+
+# .gitignore
+venv/
+.venv/
+
+# --- Secrets and Logs ---
+# This is crucial: prevents uploading your sensitive credentials
+.env               # Your file with CLIENT_ID and SECRET
+
+# Logs, databases, and temporary files
+*.log
+*.sqlite3
+
+
+# Proxy URL. Leave EMPTY if you do not use one.
+PROXY_URL=
+# Token cache file
+token_cache.txt 
+
+KYC_details.csv
+KYC_details.xlsx
+KYC_summary.csv
+KYC_summary.xlsx
+aml_findings.png .
