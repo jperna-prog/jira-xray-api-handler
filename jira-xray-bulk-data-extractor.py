@@ -21,14 +21,13 @@
 import requests
 import json
 # ... (The rest of your code follows here)
-
-
 import requests
 import json
 import os
 import time
 import pandas as pd 
 import openpyxl
+from datetime import datetime
 
 # --- 1. CONFIGURATION ---
 # Script relies on these environment variables being set externally.
@@ -74,6 +73,7 @@ def get_all_accessible_projects() -> list:
             print(f"Examples: {', '.join(project_keys[:5])}...")
             
             return project_keys
+            #return ['GDP'] # For testing a single project
 
     except Exception as e:
         print(f"CRITICAL ERROR while listing projects: {e}")
@@ -105,6 +105,7 @@ def get_issues_from_project(project_key: str) -> list:
     
     # JQL: Everything from this project (No issue type filtering, per request)
     base_jql = f'project = "{project_key}" and issuetype in(Test, "Test Execution", "Test plan", "Test set", "Precondition", "Bug")'  
+    
 
     SAFETY_LIMIT = 50000 
     
@@ -162,6 +163,17 @@ def get_issues_from_project(project_key: str) -> list:
 # ======================================================================
 
 def generate_excel_report(issues: list, filename: str = "consolidated_report.xlsx"):
+    """
+    Transforms a list of raw Jira issue dictionaries into a Pandas DataFrame,
+    parses nested fields (like reporter, links, time tracking), and exports
+    the resulting table to a standardized Excel file.
+    
+    Includes new columns for Creation Month and Year.
+
+    Args:
+        issues (list): List of issue dictionaries to process.
+        filename (str): Name of the Excel file to generate.
+    """
     if not issues: return
     print(f"\nINFO: Generating Master Excel Report with {len(issues)} records...")
     
@@ -184,19 +196,14 @@ def generate_excel_report(issues: list, filename: str = "consolidated_report.xls
         labels = ", ".join(fields.get('labels', []))
         
         # Link Parsing
-        linked_issue_keys = []
-        for link in fields.get('issuelinks', []):
-            if 'outwardIssue' in link:
-                linked_issue_keys.append(link['outwardIssue']['key'])
-            elif 'inwardIssue' in link:
-                linked_issue_keys.append(link['inwardIssue']['key'])
+        linked_issue_keys = [link['outwardIssue']['key'] for link in fields.get('issuelinks', []) if 'outwardIssue' in link]
+        linked_issue_keys.extend([link['inwardIssue']['key'] for link in fields.get('issuelinks', []) if 'inwardIssue' in link])
         linked_issues = ", ".join(linked_issue_keys)
 
         # Time Tracking (seconds)
         time_estimate = fields.get('timeoriginalestimate')
         
-        # --- LOGIC TO REPLACE 'Unknown' WITH accountId ---
-        # NOTE: Using ID as fallback for display name (for deactivated users)
+        # --- LOGIC FOR REPORTER/ASSIGNEE FALLBACK ---
         reporter_name = reporter_info.get('displayName')
         reporter_id = reporter_info.get('accountId')
         assignee_name = assignee_info.get('displayName')
@@ -210,6 +217,26 @@ def generate_excel_report(issues: list, filename: str = "consolidated_report.xls
         issue_type_id = issuetype_info.get('id')
         final_issue_type_display = issue_type_name or issue_type_id or "N/A (Corrupt)"
 
+        # --- NEW DATE EXTRACTION LOGIC ---
+        created_datetime_str = fields.get('created', '')
+        creation_date_only = 'N/A'
+        creation_month = 'N/A'
+        creation_year = 'N/A'
+
+        if created_datetime_str:
+            try:
+                # Jira uses ISO format with milliseconds and timezone offset (2025-11-22T22:16:22.000-0300)
+                # We simplify to the date part for parsing
+                created_dt_obj = datetime.fromisoformat(created_datetime_str.split('.')[0])
+                
+                creation_date_only = created_dt_obj.strftime('%Y-%m-%d')
+                creation_month = created_dt_obj.month    # Numeric month
+                creation_year = created_dt_obj.year      # Numeric year
+            except ValueError:
+                # Fallback if parsing fails (e.g., corrupt date string)
+                pass 
+        # ----------------------------------
+
 
         rows.append({
             # --- IDENTIFICATION & METRICS CORE ---
@@ -217,6 +244,12 @@ def generate_excel_report(issues: list, filename: str = "consolidated_report.xls
             "Key": key,
             "Issue Type": final_issue_type_display, 
             "Summary": fields.get('summary', 'No Summary'),
+            
+            # --- DATE METRICS (NEW) ---
+            "Creation Date": creation_date_only,        # Standard Date (YYYY-MM-DD)
+            "Creation Month": creation_month,           # New
+            "Creation Year": creation_year,             # New
+            "Updated": fields.get('updated', 'N/A').split('T')[0],
             
             # --- PEOPLE & ROLES ---
             "Reporter Name": final_reporter_display,
@@ -229,19 +262,16 @@ def generate_excel_report(issues: list, filename: str = "consolidated_report.xls
             "Priority": priority_info.get('name', 'Normal'),
             "Resolution": resolution_info.get('name', 'Unresolved'),
 
-            # --- DATES & TIME ---
-            "Created": fields.get('created', 'N/A').split('T')[0],
-            "Updated": fields.get('updated', 'N/A').split('T')[0],
-            "Original Estimate (s)": time_estimate if time_estimate is not None else 0,
-            
             # --- GROUPERS & LINKS ---
             "Components": components,
             "Labels": labels,
             "Fix Versions": fix_versions,
             "Linked Issues (Keys)": linked_issues,
+            "Original Estimate (s)": time_estimate if time_estimate is not None else 0,
             "Link": f"{JIRA_BASE_URL}/browse/{key}"
         })
 
+    # ... (rest of the pandas code to save the file)
     df = pd.DataFrame(rows)
     
     try:
@@ -251,7 +281,6 @@ def generate_excel_report(issues: list, filename: str = "consolidated_report.xls
         print("ERROR: Close the Excel file before running.")
     except Exception as e:
         print(f"CRITICAL EXCEL ERROR: {e}")
-
 # ======================================================================
 #                               MAIN
 # ======================================================================

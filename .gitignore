@@ -30,9 +30,12 @@ venv/
 PROXY_URL=
 # Token cache file
 token_cache.txt 
-
 KYC_details.csv
 KYC_details.xlsx
 KYC_summary.csv
 KYC_summary.xlsx
-aml_findings.png .
+aml_findings.png
+consolidated_report.xlsx
+*.xlsx
+
+
